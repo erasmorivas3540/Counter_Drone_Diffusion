@@ -1,0 +1,7 @@
+drone,Pe,availability,target_six_always_on,sensors_needed_fast,sensors_needed_unaware,sensors_needed_aware
+wandering (Pe = 0.5),0.5,0.9,0.02331293448402794,7,9,>10
+wandering (Pe = 0.5),0.5,0.7,0.02331293448402794,8,>10,>10
+mixed (Pe = 2),2.0,0.9,0.0019826438124653104,7,>10,>10
+mixed (Pe = 2),2.0,0.7,0.0019826438124653104,8,>10,>10
+directed (Pe = 20),20.0,0.9,2.485851283521652e-05,7,>10,>10
+directed (Pe = 20),20.0,0.7,2.485851283521652e-05,8,>10,>10

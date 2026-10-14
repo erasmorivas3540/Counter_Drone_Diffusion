@@ -20,6 +20,8 @@ upper bounds, high by at most the dropped probability (column `dropped`).
 Grid: 200 radial x about 132 angles (a multiple of K), accurate to about 5e-4.
 
 Run:  PYTHONPATH=src python experiments/q4_redundancy.py          (about 1.5 h on 2 cores)
+      ... --da 3 --kmax 10 --exact     other detection numbers (outputs get a _da3 suffix);
+      use --exact there: chances are small, so dropped patterns would dominate the bound
 Resumable: every evaluation is saved to results/checkpoints/ as it finishes.
 Writes results/q4_redundancy.csv, results/q4_redundancy_rule.csv and
 figures/q4_redundancy.png.
@@ -44,9 +46,9 @@ from scipy.optimize import minimize_scalar  # noqa: E402
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from checkpoint import Checkpoint, make_key  # noqa: E402
 from q3_best_ring import DA, PES, ROOT  # noqa: E402
-from q3_free_layout import D_RESP, R_MAX, scenario_xy  # noqa: E402
+from q3_free_layout import D_RESP, R_MAX, R_OUT  # noqa: E402
 
-from cdd import ring_sensors, solve  # noqa: E402
+from cdd import Scenario, ring_sensors, solve  # noqa: E402
 from cdd.downtime import frozen_bounds, u_fast, u_frozen_parts_ring_truncated  # noqa: E402
 
 WORKERS = int(os.environ.get("CDD_WORKERS", "2"))
@@ -54,39 +56,46 @@ KS = range(6, 13)
 TAIL = {0.9: 1e-3, 0.7: 1e-2}
 CK_NAME = "q4_redundancy"
 SCAN = np.linspace(1.0, 5.0, 9)
+RUN_DA = DA          # set from --da; worker processes inherit it through the job tuple
+
+
+def scenario_xy(sensors, pe, da=None):
+    return Scenario(r0=D_RESP, R=R_OUT, v=1.0, sigma=np.sqrt(2.0 / pe),
+                    lam0=RUN_DA if da is None else da, rho=1.0, sensors=sensors,
+                    kernel="gaussian", outer="reflect")
 
 
 def ntheta(K):
     return K * round(132 / K)
 
 
-def on_value(K, a, pe):
-    return solve(scenario_xy(ring_sensors(K, a), pe), nr=200, ntheta=ntheta(K)).worst_entry()[0]
+def on_value(K, a, pe, da):
+    return solve(scenario_xy(ring_sensors(K, a), pe, da), nr=200, ntheta=ntheta(K)).worst_entry()[0]
 
 
-def downtime_values(K, a, pe, p):
-    scn = scenario_xy(ring_sensors(K, a), pe)
+def downtime_values(K, a, pe, p, da, tail):
+    scn = scenario_xy(ring_sensors(K, a), pe, da)
     parts, dropped = u_frozen_parts_ring_truncated(scn, p, nr=200, ntheta=ntheta(K),
-                                                   tail_tol=TAIL[p])
+                                                   tail_tol=tail)
     unaware, aware = frozen_bounds(parts, dropped)
     fast = u_fast(scn, p, nr=200, ntheta=ntheta(K)).worst_entry()[0]
     return {"aware": aware, "unaware": unaware, "fast": fast, "dropped": dropped}
 
 
 def task(args):
-    K, label, pe, p = args
-    ck = Checkpoint(CK_NAME)
+    K, label, pe, p, da, tail, ck_name = args
+    ck = Checkpoint(ck_name)
 
     def on(a):
         key = make_key("on", K, pe, round(float(a), 6))
         if key not in ck:
-            ck.add(key, on_value(K, a, pe))
+            ck.add(key, on_value(K, a, pe, da))
         return ck[key]
 
     def dn(a):
         key = make_key("down", K, pe, p, round(float(a), 6))
         if key not in ck:
-            ck.add(key, downtime_values(K, a, pe, p))
+            ck.add(key, downtime_values(K, a, pe, p, da, tail))
         return ck[key]
 
     def best(f, scan):
@@ -99,7 +108,7 @@ def task(args):
     a_on, u_on = best(on, np.linspace(1.0, R_MAX, 12))
     at_on = dn(a_on)
     a_aw, u_aw = best(lambda a: dn(a)["aware"], SCAN)
-    return {"drone": label, "Pe": pe, "availability": p, "K": K,
+    return {"drone": label, "Pe": pe, "Da": da, "availability": p, "K": K,
             "always_on_radius": a_on, "u_always_on": u_on,
             "u_unaware": at_on["unaware"], "u_fast": at_on["fast"],
             "aware_radius": a_aw, "u_aware": u_aw, "u_aware_at_always_on_radius": at_on["aware"],
@@ -109,9 +118,19 @@ def task(args):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--fresh", action="store_true")
+    ap.add_argument("--da", type=float, default=DA, help="detection number Da (default 1)")
+    ap.add_argument("--kmax", type=int, default=12)
+    ap.add_argument("--exact", action="store_true",
+                    help="keep every outage pattern (needed when chances are small, e.g. Da > 1)")
     args = ap.parse_args()
-    Checkpoint(CK_NAME, fresh=args.fresh)
-    jobs = [(K, label, pe, p) for K in KS for label, pe in PES.items() for p in TAIL]
+    global KS
+    KS = range(6, args.kmax + 1)
+    suffix = "" if args.da == DA else f"_da{args.da:g}"
+    ck_name = CK_NAME + suffix
+    Checkpoint(ck_name, fresh=args.fresh)
+    tails = {p: (0.0 if args.exact else t) for p, t in TAIL.items()}
+    jobs = [(K, label, pe, p, args.da, tails[p], ck_name) for K in KS
+            for label, pe in PES.items() for p in TAIL]
     jobs.sort(key=lambda j: (-j[0], j[3]))              # biggest first
     t0 = time.time()
     rows = []
@@ -123,7 +142,7 @@ def main():
                   f"unaware {r['u_unaware']:.4f} | aware {r['u_aware']:.4f} (a={r['aware_radius']:.2f})"
                   f"  ({time.time() - t0:.0f} s)", flush=True)
     rows.sort(key=lambda r: (r["Pe"], -r["availability"], r["K"]))
-    with open(ROOT / "results" / "q4_redundancy.csv", "w", newline="") as f:
+    with open(ROOT / "results" / f"q4_redundancy{suffix}.csv", "w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=list(rows[0]))
         w.writeheader()
         w.writerows(rows)
@@ -142,7 +161,7 @@ def main():
             print(f"{label:22s} p={p:.1f}: sensors needed to match 6 always-on ({target:.3f}): "
                   f"fast {entry['sensors_needed_fast']}, unaware {entry['sensors_needed_unaware']}, "
                   f"aware {entry['sensors_needed_aware']}", flush=True)
-    with open(ROOT / "results" / "q4_redundancy_rule.csv", "w", newline="") as f:
+    with open(ROOT / "results" / f"q4_redundancy_rule{suffix}.csv", "w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=list(rule[0]))
         w.writeheader()
         w.writerows(rule)
@@ -168,12 +187,15 @@ def main():
             if i == 0 and j == 0:
                 ax.legend(fontsize=7)
     fig.suptitle(f"How many sensors make up for downtime? (response distance {D_RESP:g}, "
-                 f"Da = {DA:g}; ring radius optimized for each case)", fontsize=10)
+                 f"Da = {args.da:g}; ring radius optimized for each case)", fontsize=10)
     fig.tight_layout()
-    fig.savefig(ROOT / "figures" / "q4_redundancy.png", dpi=200)
+    if args.da != DA:
+        for ax in axes.ravel():
+            ax.set_yscale("log")
+    fig.savefig(ROOT / "figures" / f"q4_redundancy{suffix}.png", dpi=200)
     plt.close(fig)
-    print(f"\nSaved results/q4_redundancy.csv, results/q4_redundancy_rule.csv and "
-          f"figures/q4_redundancy.png ({time.time() - t0:.0f} s)")
+    print(f"\nSaved results/q4_redundancy{suffix}.csv, results/q4_redundancy_rule{suffix}.csv and "
+          f"figures/q4_redundancy{suffix}.png ({time.time() - t0:.0f} s)")
 
 
 if __name__ == "__main__":
