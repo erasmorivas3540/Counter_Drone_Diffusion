@@ -1,0 +1,333 @@
+% Theory section for: "Does random maneuvering help a drone slip past sensors?
+% A diffusion model for counter-UAS sensor layouts."
+% Standalone draft: compiles on its own; paste the body into the manuscript later.
+%
+% PROVENANCE (remove before submission, but keep the disclosure the journal requires):
+%  - Most proofs and the asymptotic expansions were derived with help from AI assistants;
+%    the arguments were checked step by step and every number was reproduced in code
+%    (move the check scripts into experiments/ before submission).               [TODO]
+%  - Prop 9 (local optimality) is a computer-assisted result produced externally; it must be
+%    re-run from its published code before it is cited as proved.        [TODO]
+%  - Prop 10 (branch and bound) is ours: experiments/bnb_straight.py.
+%  - Check MOR's policy on AI-assisted research and add the disclosure statement.  [TODO]
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsthm,mathtools,booktabs,enumitem}
+\usepackage[hidelinks]{hyperref}
+\newtheorem{theorem}{Theorem}
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{corollary}[theorem]{Corollary}
+\newtheorem{conjecture}[theorem]{Conjecture}
+\theoremstyle{remark}
+\newtheorem{remark}[theorem]{Remark}
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\Da}{\mathrm{Da}}
+\newcommand{\Pe}{\mathrm{Pe}}
+\DeclareMathOperator*{\argmax}{arg\,max}
+\DeclareMathOperator*{\argmin}{arg\,min}
+
+\begin{document}
+\section{Where should the sensors go? Theory}\label{sec:theory}
+
+The experiments of the previous section found that, among all layouts of six
+sensors, the best one is a regular ring whose radius depends on how directed the drone is.
+This section states the layout problem precisely, proves what can be proved about it, and
+separates those results from the numerical evidence for the rest.
+
+\subsection{The layout problem}
+Lengths are measured in sensor ranges ($\rho=1$) and time in range-crossings at full speed
+($v=1$). The drone moves in the annulus $\Omega=\{x\in\R^2: d<|x|<R\}$ by
+\begin{equation}\label{eq:sde}
+dX_t=-\frac{X_t}{|X_t|}\,dt+\sqrt{2D}\,dW_t ,\qquad D=1/\Pe ,
+\end{equation}
+reflecting at the outer edge $|x|=R$ and arriving when it first reaches the response line
+$|x|=d$, at time $\tau$. A layout is $s=(s_1,\dots,s_K)\in(\R^2)^K$, and detection is a
+Poisson process with rate
+\begin{equation}\label{eq:kappa}
+\kappa_s(x)=\Da\sum_{j=1}^K e^{-|x-s_j|^2/2}.
+\end{equation}
+The chance of arriving undetected from $x$ is
+$u_s(x)=\E_x\big[\exp(-\int_0^\tau\kappa_s(X_t)\,dt)\big]$, which by the Feynman--Kac formula
+solves
+\begin{equation}\label{eq:pde}
+D\,\Delta u-\partial_r u-\kappa_s u=0\ \text{in }\Omega,\qquad u=1\ \text{on }|x|=d,\qquad
+\partial_r u=0\ \text{on }|x|=R .
+\end{equation}
+The drone chooses where to enter and the defender chooses the layout:
+\begin{equation}\label{eq:minimax}
+F(s)=\max_{|x|=R}u_s(x),\qquad F^*=\inf_{s}F(s).
+\end{equation}
+A \emph{regular ring} of radius $a$ is $s_j=a\,e^{2\pi i j/K}$ (identifying $\R^2$ with
+$\mathbb{C}$, up to rotation); we write $F_{\rm ring}(a)$ and $a^*=\argmin_a F_{\rm ring}(a)$.
+Throughout, $T_D(x)=\E_x\tau$ is the mean arrival time, which is finite and bounded on
+$\overline\Omega$.
+
+\subsection{Basic properties}
+\begin{proposition}[Well-posedness]\label{prop:basic}
+\begin{enumerate}[label=(\alph*)]
+\item \emph{More detection never helps the drone:} if $\kappa_1\le\kappa_2$ then
+$u_{\kappa_2}\le u_{\kappa_1}$, strictly on $\overline\Omega\setminus\{|x|=d\}$ if
+$\kappa_1<\kappa_2$ on an open set.
+\item \emph{Sensors belong inside the area:} replacing a sensor at $s_j=a n$ with $a>R$,
+$|n|=1$, by $Rn$ strictly lowers $u_s$ on the outer edge. Hence every minimizer lies in
+$(\overline B_R)^K$.
+\item \emph{Continuity:} $|F(s)-F(t)|\le \Da\,e^{-1/2}\,\sup_{\overline\Omega}T_D\,
+\sum_j|s_j-t_j|$.
+\item A minimizer of $F$ exists, and $F$ is invariant under rotations and reflections of the
+plane and under relabeling the sensors.
+\end{enumerate}
+\end{proposition}
+\begin{proof}
+(a) follows path by path from the Feynman--Kac representation. (b) For $|x|\le R$,
+$|x-an|^2-|x-Rn|^2=(a-R)(a+R-2x\cdot n)>0$, so the moved sensor raises $\kappa_s$ everywhere in
+$\Omega$; apply (a) and compactness of the outer circle. (c) Coupling both layouts on the
+same path, $|e^{-A}-e^{-B}|\le|A-B|\le\tau\|\kappa_s-\kappa_t\|_\infty$, and the gradient of
+$e^{-|x-y|^2/2}$ in $y$ has norm at most $e^{-1/2}$. (d) $F$ is continuous on the compact set
+$(\overline B_R)^K$, which contains a minimizer by (b).
+\end{proof}
+
+\subsection{Rings: where the drone gets through}
+For a ring, the detection rate at fixed distance $r$ from the site is
+$\kappa(r,\theta)=\Da\,e^{-(r^2+a^2)/2}S_K(ra,\theta)$ with
+$S_K(z,\theta)=\sum_{j=0}^{K-1}e^{z\cos(\theta-2\pi j/K)}$.
+\begin{lemma}[Coverage is thinnest midway between sensors]\label{lem:midpoint}
+For $K\ge2$ and $z>0$, $S_K(z,\theta)$ is strictly decreasing in $\theta$ on $(0,\pi/K)$.
+\end{lemma}
+\begin{proof}
+For $0<\theta<\pi/K$ put $c=\cos K\theta$, which decreases from $1$ to $-1$. The distinct
+numbers $t_j=\cos(\theta-2\pi j/K)$ are the roots of $T_K(t)-c$, where $T_K$ is the Chebyshev
+polynomial with leading coefficient $2^{K-1}$. Implicit differentiation gives
+$dt_j/dc=1/T_K'(t_j)$, so with $f(t)=z e^{zt}$,
+\[
+\frac{dS_K}{dc}=\sum_j\frac{f(t_j)}{T_K'(t_j)}=2^{1-K}f[t_0,\dots,t_{K-1}]
+=\frac{2^{1-K}}{(K-1)!}f^{(K-1)}(\xi)=\frac{2^{1-K}z^K e^{z\xi}}{(K-1)!}>0,
+\]
+using the divided-difference mean-value theorem. As $c$ decreases with $\theta$, so does $S_K$.
+\end{proof}
+
+\begin{theorem}[The drone's best entry point]\label{thm:midpoint}
+For every $D>0$ and every ring radius $a>0$, $u$ on the outer edge is strictly increasing in
+$\theta$ on $(0,\pi/K)$. Hence $F_{\rm ring}(a)=u(R,\pi/K)$: the drone's best entry point is
+always midway between two neighboring sensors.
+\end{theorem}
+\begin{proof}
+Let $w=\partial_\theta u$ on the wedge $W=\{d<r<R,\ 0<\theta<\pi/K\}$. The operator in
+\eqref{eq:pde} has coefficients independent of $\theta$, so differentiating gives
+$D\Delta w-\partial_r w-\kappa w=(\partial_\theta\kappa)\,u$, which is negative in $W$ by
+Lemma~\ref{lem:midpoint} and $u>0$. By the ring's mirror symmetries $w=0$ on $\theta=0$ and
+$\theta=\pi/K$; $w=0$ on $r=d$ since $u\equiv1$ there; and $\partial_r w=0$ on $r=R$. The
+strong minimum principle (the zeroth-order coefficient $-\kappa$ is nonpositive) and Hopf's
+lemma at the Neumann edge exclude a nonpositive minimum of $w$ in $W$ or on its outer arc, so
+$w>0$ there.
+\end{proof}
+
+\begin{proposition}[The best ring is a stationary point of the full problem]
+\label{prop:clarke}
+If $a>0$ is a local minimizer of $F_{\rm ring}$, then the ring of radius $a$ is
+Clarke-stationary for $F$ on $(\R^2)^K$: $0\in\partial^C F(s(a))$.
+\end{proposition}
+\begin{proof}
+For $D>0$, $u_s(R,\theta)$ is smooth in $s$, so by Danskin's theorem
+$C=\partial^CF(s(a))=\operatorname{conv}\{\nabla_s u_s(R,\theta):\theta\in A\}$, where $A$ is
+the set of maximizing angles. With $e=s(a)/a$ the radial direction, local minimality along
+the ring gives $\max_{g\in C}g\cdot e\ge0$ and $\min_{g\in C}g\cdot e\le0$, so some $h\in C$
+has $h\cdot e=0$. The dihedral group $D_K$ acts on layouts by rotating or reflecting the plane
+and relabeling sensors; it fixes $s(a)$ and preserves $C$. Its fixed vectors are exactly the
+multiples of $e$: rotations force equal displacements in each sensor's own frame, and the
+reflection through a sensor removes the tangential part. The group average of $h$ therefore
+lies in $C$ and equals $(h\cdot e/K)\,e=0$.
+\end{proof}
+
+\subsection{The straight-line drone ($D\to0$)}
+As $D\to0$ the drone flies straight in along the ray at its entry angle, and
+$u_s(R,\theta)\to e^{-I_s(\theta)}$ with \emph{exposure}
+$I_s(\theta)=\int_d^R\kappa_s(re^{i\theta})\,dr$. Minimizing $F$ becomes maximizing
+$V(s)=\min_\theta I_s(\theta)$. Because $V$ is proportional to $\Da$, the best layout in this
+limit depends only on $(K,d,R)$. One sensor at polar position $(a,\phi)$ contributes the
+closed form
+\begin{equation}\label{eq:h}
+h(a,\theta-\phi)=\sqrt{\tfrac{\pi}{2}}\,e^{-a^2\sin^2 t/2}
+\Big[\operatorname{erf}\tfrac{R-a\cos t}{\sqrt2}-\operatorname{erf}\tfrac{d-a\cos t}{\sqrt2}\Big],
+\qquad t=\theta-\phi .
+\end{equation}
+Write $B_n(a)=\int_d^R e^{-(r^2+a^2)/2}I_n(ra)\,dr$ with $I_n$ the modified Bessel function.
+
+\begin{proposition}[Exact ring exposure]\label{prop:ringexposure}
+For a ring of radius $a$,
+$I_{\rm ring}(\theta)=K\Da\big[B_0(a)+2\sum_{q\ge1}B_{qK}(a)\cos(qK\theta)\big]$, its minimum is
+at the midpoints, and
+\[
+M_K(a):=\min_\theta I_{\rm ring}=K\Da\Big[B_0(a)+2\sum_{q\ge1}(-1)^qB_{qK}(a)\Big],\qquad
+0\le K\Da\,B_0(a)-M_K(a)\le 2K\Da\,B_K(a).
+\]
+\end{proposition}
+\begin{proof}
+Insert $e^{z\cos\varphi}=I_0(z)+2\sum_{n\ge1}I_n(z)\cos n\varphi$ and sum over the ring; only
+multiples of $K$ survive. The minimum location is Lemma~\ref{lem:midpoint} integrated in $r$.
+The bound is the alternating-series estimate, since $I_n(z)$ decreases in $n$ for $z>0$.
+\end{proof}
+
+\begin{proposition}[What the straight-line problem says]\label{prop:straight}
+Let $V^*=\sup_sV(s)$ and $A_0=\int_d^Re^{-r^2/2}dr$, $A_2=\int_d^R(r^2-2)e^{-r^2/2}dr$.
+\begin{enumerate}[label=(\alph*)]
+\item \emph{Rings are asymptotically optimal:}
+$V^*\le K\Da\max_aB_0(a)$, and the ring at $\argmax_a B_0$ is within
+$2K\Da(R-d)\,(R^2/2)^K/K!$ of $V^*$.
+\item \emph{Collapse to the center:} if $K\le2$, or if $R\le2$ and $A_2\le0$, the unique
+optimum puts every sensor at the center.
+\item \emph{No collapse:} if $K\ge3$ and $A_2>0$, then
+$M_K(a)=K\Da A_0+\tfrac{K\Da}{4}A_2a^2+O(a^3)$, so a small ring beats the center.
+\end{enumerate}
+\end{proposition}
+\begin{proof}[Proof sketch]
+(a) $V(s)\le\frac1{2\pi}\int I_s=\Da\sum_jB_0(|s_j|)$; combine with
+Proposition~\ref{prop:ringexposure} and $I_K(z)\le (z/2)^Ke^z/K!$.
+(b) For $K\le2$ some ray makes a nonacute angle with both sensors, and along it each sensor
+contributes at most what a central sensor would. For $R\le2$, $A_2\le0$, the moment bound
+$\E_\mu r^{2m}\le2^mm!$ under $\mu\propto e^{-r^2/2}dr$ gives $B_0(a)<A_0$ for $a>0$.
+(c) Expand $e^{-a^2/2}I_0(ra)=1+\tfrac{a^2}{4}(r^2-2)+O(a^4)$ and use $B_K=O(a^K)$.
+\end{proof}
+For the base geometry $d=2$, $R=6.5$ we have $A_2>0$, so collapse never occurs; the bound in
+(a) is only useful for large $K$. The straight-line best ring radius is
+$\argmax_aM_K(a)$ (for $K=6$: $a=2.4528$, $M_6=1.30410$, $e^{-M_6}=0.2714$), not
+$\argmax_aB_0(a)=3.060$, which maximizes \emph{average} rather than worst-case coverage.
+
+\begin{proposition}[Local optimality of the hexagon; computer-assisted]\label{prop:local}
+For $K=6$, $d=2$, $R=6.5$, the best ring radius is unique in $[2.452774,\,2.452776]$, and the
+regular hexagon there is a strict local maximizer of $V$, modulo rotation.
+\end{proposition}
+\noindent\emph{Status.} Proved by an interval-arithmetic certificate of a second-order
+condition for max-min functions that accounts for movement of the worst entry angle
+(see the notes; \textbf{to be re-run from its code before submission}). Independently, all
+800 random perturbations of size $3\times10^{-3}$ and $10^{-2}$ that we tried lowered $V$.
+
+\begin{proposition}[Global certificate up to $\varepsilon$; branch and bound]\label{prop:bnb}
+For $K=4$, $d=2$, $R=6.5$: no layout has $V(s)>M_4(a^*)+\varepsilon$, with
+$M_4(a^*)=0.522161$ at $a^*=1.822662$ and $\varepsilon=2\times10^{-4}$ (0.04\% of the optimum).
+\end{proposition}
+\noindent\emph{Method.} Branch and bound over the $2K-1$ layout coordinates (after fixing
+rotation, ordering the angles and putting the outermost sensor at angle $0$; radii in
+$[0,R]$ by Proposition~\ref{prop:basic}(b)). For a box of layouts and finitely many test
+angles $\theta$, $\max V\le\min_\theta\sum_j\sup_{\rm box}h$; the supremum over each sensor's
+angular range is attained at the closest angle because $h$ decreases in $|t|$, and over its
+radial range by tabulated values of \eqref{eq:h} plus the bound
+$|\partial_a^2h|\le5.5$. Boxes whose bound is at most the target are discarded; the rest are
+halved. Near the ring this first-order bound loses accuracy in proportion to the box width,
+so small boxes also use a second-order bound: a Taylor expansion of each sensor's contribution
+with a rigorous remainder (Hessian and gradient bounds that shrink with the sensor's distance
+from each test ray), combined over test angles by linear-programming dual weights. The final
+bound is evaluated from those weights directly, so it is valid whatever the solver's
+accuracy. The $K=4$ certificate took $3.2\times10^{6}$ boxes and 56 minutes on one core
+(at $\varepsilon=10^{-3}$: $10^5$ boxes, 90 seconds).
+For $K=6$ the same method did not finish: after 90 minutes, even with the weak target
+$\varepsilon=0.1$, about a quarter of the search space remained open. The bottleneck is the
+five free angles. A box that allows each sensor a wide range of angles is bounded as if every
+sensor sat at the best angle for each ray, which behaves like a ring smeared into a continuous
+band (exposure up to $K\Da\max_aB_0=1.667$, well above the hexagon's $1.304$); only boxes that
+are narrow in all five angles can be discarded. Certifying $K=6$ will need a bound that keeps
+sensors discrete across rays, or a symmetry reduction, and is left for future work.
+
+\subsection{How the best radius depends on drone randomness}
+\begin{proposition}[Both ends of the randomness scale]\label{prop:radius}
+\begin{enumerate}[label=(\alph*)]
+\item \emph{Nearly straight drones (formal expansion):}
+$F_{\rm ring}(a)=e^{-M_K(a)}\big[1+D\,H_K(a)+O(D^2)\big]$ with
+\[
+H_K(a)=\kappa(d,\tfrac{\pi}{K})+\int_d^R\Big[\kappa^2-\frac{\kappa}{r}
+-\frac{J_{\theta\theta}}{r^2}\Big]_{\theta=\pi/K}dr,\qquad
+J(r,\theta)=\int_d^r\kappa(q,\theta)\,dq,
+\]
+the term $\kappa(d,\pi/K)$ coming from the boundary layer at the reflecting edge. Hence
+$a^*(D)=a^*(0)+cD+O(D^2)$ with $c=H_K'(a^*(0))/M_K''(a^*(0))$; for the base case
+$c\approx3.317$.
+\item \emph{Strongly wandering drones:} $u_s=1-w_s/D+O(D^{-2})$ where $-\Delta w_s=\kappa_s$,
+$w_s=0$ at $r=d$, $\partial_rw_s=0$ at $r=R$; the best ring radius tends to the maximizer of
+$\min_\theta w_{s(a)}(R,\theta)$, which for the base case is $a_\infty\approx4.96$.
+\end{enumerate}
+\end{proposition}
+
+\begin{table}[h]\centering
+\caption{Best ring radius for six sensors ($d=2$, $R=6.5$, $\Da=1$): finite-difference
+solutions of \eqref{eq:pde} against the two asymptotic predictions.}\label{tab:radius}
+\begin{tabular}{@{}lcccccccccc@{}}\toprule
+$D$ & 0 & 0.005 & 0.01 & 0.02 & 0.05 & 0.5 & 2 & 8 & 32 & $\infty$\\\midrule
+PDE & 2.453 & 2.471 & 2.487 & 2.517 & 2.599 & 3.25 & 4.03 & 4.67 & 4.89 & \\
+$a^*(0)+cD$ & & 2.469 & 2.486 & 2.519 & 2.619 & & & & & \\
+Large-$D$ limit & & & & & & & & & & 4.96\\\bottomrule
+\end{tabular}
+\end{table}
+The best radius grows steadily with randomness, from the straight-line value $2.453$ toward
+$4.96$: a defender facing wandering drones should push the ring outward, where it covers the
+longer, more tortuous approach paths. Monotonicity for all $D$ is supported by
+Table~\ref{tab:radius} but not proved.
+
+\subsection{A floor no layout can beat}
+\begin{proposition}[Rotational-average lower bound]\label{prop:floor}
+For every layout, $F(s)\ge u_{\bar\kappa_s}(R)$, where
+$\bar\kappa_s(r)=\Da\sum_je^{-(r^2+|s_j|^2)/2}I_0(r|s_j|)$ is $\kappa_s$ averaged over
+rotations. Consequently $F^*\ge\min_{a_1,\dots,a_K\ge0}u_{\bar\kappa(a)}(R)$, a problem with
+radial symmetry. If $R\le\sqrt2$ the bound is attained by putting every sensor at the center.
+\end{proposition}
+\begin{proof}
+By Jensen's inequality path by path,
+$u_{\bar\kappa_s}(x)\le\frac1{2\pi}\int_0^{2\pi}u_{Q_\phi s}(x)\,d\phi$, and by rotational
+invariance of \eqref{eq:sde} the right side at $|x|=R$ is the average of $u_s$ over entry
+angles, which is at most $F(s)$. For $R\le\sqrt2$,
+$e^{-a^2/2}I_0(ra)\le e^{-a^2/2+r^2a^2/4}\le1$, so $\bar\kappa_s\le K\Da e^{-r^2/2}$.
+\end{proof}
+
+\begin{table}[h]\centering
+\caption{Six sensors, $d=2$, $R=6.5$, $\Da=1$: the best ring against the floor of
+Proposition~\ref{prop:floor} (radial problem solved numerically; the minimizing radii were
+all equal).}\label{tab:floor}
+\begin{tabular}{@{}lcccc@{}}\toprule
+Drone & $\Pe$ & Best ring $F$ & Floor & Gap\\\midrule
+Wandering & 0.5 & 0.4440 & 0.4099 & 0.034\\
+Mixed & 2 & 0.3101 & 0.2683 & 0.042\\
+Directed & 20 & 0.2710 & 0.1986 & 0.072\\\bottomrule
+\end{tabular}
+\end{table}
+The floor is tightest for wandering drones, which effectively average the detection field over
+angle. Averaging only over the ring's own $K$-fold rotations does not tighten it: the averaged
+field of six suitably placed sensors is that of a 36-sensor ring of one-sixth strength, which
+is within $10^{-9}$ of the fully averaged field.
+
+\subsection{Is the ring the best layout? Evidence and conjecture}
+\begin{conjecture}\label{conj:ring}
+For $d=2$, $R=6.5$, $\Da=1$ and $K=6$, every minimizer of $F$ is a regular ring, for every
+$D>0$.
+\end{conjecture}
+\noindent Evidence, beyond Propositions~\ref{prop:clarke}, \ref{prop:local} and
+\ref{prop:bnb}:
+\begin{itemize}[nosep]
+\item Gradient search (exact adjoint gradients of a soft maximum of the edge values,
+L-BFGS-B) from 36 starts per drone type, 30 of them random: all 108 runs ended at a regular
+hexagon (spacing $60^\circ$, radii within $0.03$), within $2\times10^{-4}$ of the best ring,
+below the grid error.
+\item Straight-line limit: 45 epigraph searches (SLSQP), 40 from random layouts, all ended at
+the hexagon of radius $2.453$; for $K=4$, likewise at the square of radius $1.823$.
+\item Structured families (two staggered rings, zigzag, five plus one, four plus two) either
+collapse to the ring or are worse by $0.08$--$0.20$; a seeded evolutionary search never
+improved on its ring seed.
+\item Pattern changes: for straight-line drones the single ring beats ring-plus-center and
+every two-ring split for $K=3,\dots,10$, unlike the small-trap eigenvalue problem, where a
+ring plus a center trap wins from seven traps \cite{KTW05}.
+\end{itemize}
+Conjecture~\ref{conj:ring} cannot hold for every geometry: by
+Propositions~\ref{prop:straight}(b) and~\ref{prop:floor}, small areas ($R\le\sqrt2$, or
+$R\le2$ with $A_2\le0$ for straight-line drones) are best defended by stacking every sensor at
+the center. The ring is the answer when the area is large compared with a sensor's range.
+
+\begin{thebibliography}{9}
+\bibitem{KTW05} T.~Kolokolnikov, M.~S.~Titcombe, M.~J.~Ward, Optimizing the fundamental
+Neumann eigenvalue for the Laplacian in a domain with small traps, \emph{European J. Appl.
+Math.} 16 (2005) 161--200.
+\bibitem{Oks} B.~{\O}ksendal, \emph{Stochastic Differential Equations}, 6th ed., Springer,
+2003.
+\bibitem{Clarke} F.~H.~Clarke, \emph{Optimization and Nonsmooth Analysis}, Wiley, 1983.
+\bibitem{GT} D.~Gilbarg, N.~S.~Trudinger, \emph{Elliptic Partial Differential Equations of
+Second Order}, Springer, 2001.
+\end{thebibliography}
+\end{document}

@@ -36,7 +36,7 @@ Needs Python 3.10+, NumPy, SciPy and Matplotlib.
 ## Check that it works
 
 ```bash
-pytest -q                                   # all 43 checks, about 40 s
+pytest -q                                   # all 48 checks, about 45 s
 pytest -q -m "not slow"                     # skip the Monte Carlo checks, about 10 s
 python experiments/validation_report.py     # tables + figure, about 3 min (--quick: 1 min)
 ```
@@ -66,7 +66,13 @@ simulate_u([4.5, 0.0], scn)              # Monte Carlo estimate with a 95% inter
 | `src/cdd/model.py` | `Scenario` (site, drone, sensors, edge), detection kernels, `ring_sensors` |
 | `src/cdd/exact.py` | Exact references: 1D closed form, 2D Bessel solution, radial ODE (`solve_bvp`) |
 | `src/cdd/montecarlo.py` | `simulate_u` (2D) and `simulate_u_1d`, returning an estimate and 95% interval |
-| `src/cdd/pde.py` | `solve`: polar-grid finite differences and a sparse direct solve |
+| `src/cdd/pde.py` | `solve`: polar-grid finite differences and a sparse direct solve; `build_system` exposes the matrix |
+| `src/cdd/adjoint.py` | Adjoint gradient of the drone's best chance (soft maximum) with respect to sensor positions |
+| `experiments/q3_*.py` | Question 3: best ring, sensitivity, free-layout searches (structured families, gradient, seeded evolutionary, multi-start), comparison table |
+| `experiments/run_q3_layout_searches.sh` | Runs the three Q3 layout searches in order; resumable from `results/checkpoints/` |
+| `experiments/bnb_straight.py` | Branch-and-bound certificate for straight-line drones (K = 4 certified to 2e-4) |
+| `experiments/theory_checks/` | Scripts reproducing every number in the theory section |
+| `paper/theory_section.tex` | Draft theory section (compiles on its own) |
 | `tests/` | The validation ladder (rungs 1–5) plus structural checks |
 | `experiments/validation_report.py` | Reruns the ladder with more paths; tables and figure for the paper |
 | `results/`, `figures/` | Generated outputs |

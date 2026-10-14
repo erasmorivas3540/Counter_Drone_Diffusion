@@ -1,0 +1,13 @@
+{
+  "K": 4,
+  "eps": 0.02,
+  "ring_radius": 1.822661615101195,
+  "V_ring": 0.5221610112101207,
+  "certified_upper_bound": 0.5421610112101207,
+  "processed": 5019,
+  "pruned": 2120,
+  "infeasible": 390,
+  "max_depth_volume": 1.0,
+  "best_center_V": 0.430520820662957,
+  "seconds": 16.920753002166748
+}
